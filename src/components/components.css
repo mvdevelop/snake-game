@@ -1,0 +1,13 @@
+
+.navbar {
+    display: flex;
+    font-size: 1.2em;
+}
+
+.logo {
+    width: 3em;
+}
+
+.gif {
+    width: 6em;
+}
