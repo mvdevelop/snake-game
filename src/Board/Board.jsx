@@ -1,6 +1,6 @@
 import React, {useEffect, useState, useCallback, useRef} from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import { incrementScore, endGame, resetGame, selectHighScore, selectCurrentScore } from '../store/gameSlice';
+import { incrementScore, endGame, resetGame, selectHighScore } from '../store/gameSlice';
 import { selectCurrentUser } from '../store/authSlice';
 import TouchControls from '../components/TouchControls';
 import {
@@ -52,7 +52,6 @@ const getStartingSnakeLLValue = board => {
 const Board = () => {
   const dispatch = useDispatch();
   const highScore = useSelector(selectHighScore);
-  const currentReduxScore = useSelector(selectCurrentScore);
   const currentUser = useSelector(selectCurrentUser);
 
   // Local game state (not persisted — gameplay mechanics)
