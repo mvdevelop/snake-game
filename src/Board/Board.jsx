@@ -1,4 +1,8 @@
-import React, {useEffect, useState, useCallback} from 'react';
+import React, {useEffect, useState, useCallback, useRef} from 'react';
+import { useSelector, useDispatch } from 'react-redux';
+import { incrementScore, endGame, resetGame, selectHighScore, selectCurrentScore } from '../store/gameSlice';
+import { selectCurrentUser } from '../store/authSlice';
+import TouchControls from '../components/TouchControls';
 import {
   randomIntFromInterval,
   reverseLinkedList,
@@ -6,13 +10,6 @@ import {
 } from '../lib/utils.js';
 
 import './Board.css';
-
-/**
- * TODO: add a more elegant UX for before a game starts and after a game ends.
- * A game probably shouldn't start until the user presses an arrow key, and
- * once a game is over, the board state should likely freeze until the user
- * intentionally restarts the game.
- */
 
 class LinkedListNode {
   constructor(value) {
@@ -53,11 +50,12 @@ const getStartingSnakeLLValue = board => {
 };
 
 const Board = () => {
-  const [score, setScore] = useState(0);
-  const [highScore, setHighScore] = useState(() => {
-    const saved = localStorage.getItem('snake-game-highscore');
-    return saved ? parseInt(saved, 10) : 0;
-  });
+  const dispatch = useDispatch();
+  const highScore = useSelector(selectHighScore);
+  const currentReduxScore = useSelector(selectCurrentScore);
+  const currentUser = useSelector(selectCurrentUser);
+
+  // Local game state (not persisted — gameplay mechanics)
   const [board, setBoard] = useState(createBoard(BOARD_SIZE));
   const [snake, setSnake] = useState(
     new LinkedList(getStartingSnakeLLValue(board)),
@@ -65,13 +63,60 @@ const Board = () => {
   const [snakeCells, setSnakeCells] = useState(
     new Set([snake.head.value.cell]),
   );
-  // Naively set the starting food cell 5 cells away from the starting snake cell.
   const [foodCell, setFoodCell] = useState(snake.head.value.cell + 5);
   const [direction, setDirection] = useState(Direction.RIGHT);
-  const [foodShouldReverseDirection, setFoodShouldReverseDirection] = useState(
-    false,
-  );
-  const [gameState, setGameState] = useState('idle'); // 'idle' | 'playing' | 'gameover'
+  const [foodShouldReverseDirection, setFoodShouldReverseDirection] = useState(false);
+  const [gameState, setGameState] = useState('idle');
+  const [score, setScore] = useState(0);
+
+  // Touch swipe detection
+  const boardWrapperRef = useRef(null);
+  const touchStartRef = useRef(null);
+
+  // Unified direction change — used by keyboard, touch buttons, and swipe
+  const handleDirectionChange = useCallback((newDirection) => {
+    if (!newDirection) return;
+
+    setGameState(prev => {
+      if (prev === 'idle' || prev === 'gameover') {
+        return 'playing';
+      }
+      return prev;
+    });
+
+    setDirection(prevDir => {
+      const snakeWillRunIntoItself =
+        getOppositeDirection(newDirection) === prevDir && snakeCells.size > 1;
+      if (snakeWillRunIntoItself) return prevDir;
+      return newDirection;
+    });
+  }, [snakeCells]);
+
+  // --- Swipe detection ---
+  const handleTouchStart = useCallback((e) => {
+    const touch = e.touches[0];
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+  }, []);
+
+  const handleTouchEnd = useCallback((e) => {
+    if (!touchStartRef.current) return;
+    const touch = e.changedTouches[0];
+    const deltaX = touch.clientX - touchStartRef.current.x;
+    const deltaY = touch.clientY - touchStartRef.current.y;
+    const minSwipeDistance = 30;
+
+    if (Math.abs(deltaX) < minSwipeDistance && Math.abs(deltaY) < minSwipeDistance) {
+      return; // Too short — probably a tap, not a swipe
+    }
+
+    if (Math.abs(deltaX) > Math.abs(deltaY)) {
+      handleDirectionChange(deltaX > 0 ? Direction.RIGHT : Direction.LEFT);
+    } else {
+      handleDirectionChange(deltaY > 0 ? Direction.DOWN : Direction.UP);
+    }
+
+    touchStartRef.current = null;
+  }, [handleDirectionChange]);
 
   useEffect(() => {
     window.addEventListener('keydown', e => {
@@ -80,9 +125,6 @@ const Board = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // `useInterval` is needed; you can't naively do `setInterval` in the
-  // `useEffect` above. See the article linked above the `useInterval`
-  // definition for details.
   useInterval(() => {
     if (gameState === 'playing') {
       moveSnake();
@@ -91,26 +133,10 @@ const Board = () => {
 
   const handleKeydown = useCallback(e => {
     const newDirection = getDirectionFromKey(e.key);
-    const isValidDirection = newDirection !== '';
-    if (!isValidDirection) return;
-
-    // Start game on first arrow key press
-    setGameState(prev => {
-      if (prev === 'idle' || prev === 'gameover') {
-        return 'playing';
-      }
-      return prev;
-    });
-
-    const snakeWillRunIntoItself =
-      getOppositeDirection(newDirection) === direction && snakeCells.size > 1;
-    // Note: this functionality is currently broken, for the same reason that
-    // `useInterval` is needed. Specifically, the `direction` and `snakeCells`
-    // will currently never reflect their "latest version" when `handleKeydown`
-    // is called. I leave it as an exercise to the viewer to fix this :P
-    if (snakeWillRunIntoItself) return;
-    setDirection(newDirection);
-  }, [direction, snakeCells]);
+    if (newDirection) {
+      handleDirectionChange(newDirection);
+    }
+  }, [handleDirectionChange]);
 
   const moveSnake = () => {
     const currentHeadCoords = {
@@ -147,7 +173,6 @@ const Board = () => {
 
     const foodConsumed = nextHeadCell === foodCell;
     if (foodConsumed) {
-      // This function mutates newSnakeCells.
       growSnake(newSnakeCells);
       if (foodShouldReverseDirection) reverseSnake();
       handleFoodConsumption(newSnakeCells);
@@ -156,11 +181,9 @@ const Board = () => {
     setSnakeCells(newSnakeCells);
   };
 
-  // This function mutates newSnakeCells.
   const growSnake = newSnakeCells => {
     const growthNodeCoords = getGrowthNodeCoords(snake.tail, direction);
     if (isOutOfBounds(growthNodeCoords, board)) {
-      // Snake is positioned such that it can't grow; don't do anything.
       return;
     }
     const newTailCell = board[growthNodeCoords.row][growthNodeCoords.col];
@@ -181,8 +204,6 @@ const Board = () => {
     const newDirection = getOppositeDirection(tailNextNodeDirection);
     setDirection(newDirection);
 
-    // The tail of the snake is really the head of the linked list, which
-    // is why we have to pass the snake's tail to `reverseLinkedList`.
     reverseLinkedList(snake.tail);
     const snakeHead = snake.head;
     snake.head = snake.tail;
@@ -192,10 +213,6 @@ const Board = () => {
   const handleFoodConsumption = newSnakeCells => {
     const maxPossibleCellValue = BOARD_SIZE * BOARD_SIZE;
     let nextFoodCell;
-    // In practice, this will never be a time-consuming operation. Even
-    // in the extreme scenario where a snake is so big that it takes up 90%
-    // of the board (nearly impossible), there would be a 10% chance of generating
-    // a valid new food cell--so an average of 10 operations: trivial.
     while (true) {
       nextFoodCell = randomIntFromInterval(1, maxPossibleCellValue);
       if (newSnakeCells.has(nextFoodCell) || foodCell === nextFoodCell)
@@ -208,18 +225,20 @@ const Board = () => {
 
     setFoodCell(nextFoodCell);
     setFoodShouldReverseDirection(nextFoodShouldReverseDirection);
-    setScore(score + 1);
+    setScore(prev => prev + 1);
+    dispatch(incrementScore());
   };
 
   const handleGameOver = () => {
-    const finalScore = score;
-    if (finalScore > highScore) {
-      setHighScore(finalScore);
-      localStorage.setItem('snake-game-highscore', finalScore.toString());
-    }
-
     setGameState('gameover');
-    setScore(0);
+    const finalScore = score;
+
+    // Dispatch to Redux — persists via redux-persist
+    dispatch(endGame({
+      score: finalScore,
+      player: currentUser?.username || 'Anonymous',
+    }));
+
     const snakeLLStartingValue = getStartingSnakeLLValue(board);
     setSnake(new LinkedList(snakeLLStartingValue));
     setFoodCell(snakeLLStartingValue.cell + 5);
@@ -230,6 +249,7 @@ const Board = () => {
   const handleRestart = () => {
     setGameState('idle');
     setScore(0);
+    dispatch(resetGame());
     const newBoard = createBoard(BOARD_SIZE);
     setBoard(newBoard);
     const snakeLLStartingValue = getStartingSnakeLLValue(newBoard);
@@ -253,7 +273,12 @@ const Board = () => {
         </div>
       </div>
 
-      <div className="game-page__board-wrapper">
+      <div
+        className="game-page__board-wrapper"
+        ref={boardWrapperRef}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
         <div className="board">
           {board.map((row, rowIdx) => (
             <div key={rowIdx} className="board__row">
@@ -270,14 +295,13 @@ const Board = () => {
           ))}
         </div>
 
-        {/* Overlay messages */}
         {gameState === 'idle' && (
           <div className="game-page__overlay">
             <div className="game-page__overlay-content">
               <span className="game-page__overlay-icon">⌨️</span>
               <h3 className="game-page__overlay-title">Pronto para Jogar?</h3>
               <p className="game-page__overlay-text">
-                Pressione qualquer <strong>seta do teclado</strong> para começar!
+                Pressione as <strong>setas</strong> ou <strong>deslize</strong> para começar!
               </p>
             </div>
           </div>
@@ -289,7 +313,10 @@ const Board = () => {
               <span className="game-page__overlay-icon">💀</span>
               <h3 className="game-page__overlay-title">Game Over!</h3>
               <p className="game-page__overlay-text">
-                {score === highScore ? '🎉 Novo recorde!' : `Você fez ${score} pontos!`}
+                {score === highScore && score > 0
+                  ? '🎉 Novo recorde!'
+                  : `Você fez ${score} pontos!`
+                }
               </p>
               <button className="game-page__restart-btn" onClick={handleRestart}>
                 Jogar Novamente
@@ -298,6 +325,9 @@ const Board = () => {
           </div>
         )}
       </div>
+
+      {/* Mobile touch controls */}
+      <TouchControls onDirectionChange={handleDirectionChange} />
     </div>
   );
 };
@@ -317,28 +347,16 @@ const createBoard = BOARD_SIZE => {
 
 const getCoordsInDirection = (coords, direction) => {
   if (direction === Direction.UP) {
-    return {
-      row: coords.row - 1,
-      col: coords.col,
-    };
+    return { row: coords.row - 1, col: coords.col };
   }
   if (direction === Direction.RIGHT) {
-    return {
-      row: coords.row,
-      col: coords.col + 1,
-    };
+    return { row: coords.row, col: coords.col + 1 };
   }
   if (direction === Direction.DOWN) {
-    return {
-      row: coords.row + 1,
-      col: coords.col,
-    };
+    return { row: coords.row + 1, col: coords.col };
   }
   if (direction === Direction.LEFT) {
-    return {
-      row: coords.row,
-      col: coords.col - 1,
-    };
+    return { row: coords.row, col: coords.col - 1 };
   }
 };
 
@@ -361,35 +379,18 @@ const getNextNodeDirection = (node, currentDirection) => {
   if (node.next === null) return currentDirection;
   const {row: currentRow, col: currentCol} = node.value;
   const {row: nextRow, col: nextCol} = node.next.value;
-  if (nextRow === currentRow && nextCol === currentCol + 1) {
-    return Direction.RIGHT;
-  }
-  if (nextRow === currentRow && nextCol === currentCol - 1) {
-    return Direction.LEFT;
-  }
-  if (nextCol === currentCol && nextRow === currentRow + 1) {
-    return Direction.DOWN;
-  }
-  if (nextCol === currentCol && nextRow === currentRow - 1) {
-    return Direction.UP;
-  }
+  if (nextRow === currentRow && nextCol === currentCol + 1) return Direction.RIGHT;
+  if (nextRow === currentRow && nextCol === currentCol - 1) return Direction.LEFT;
+  if (nextCol === currentCol && nextRow === currentRow + 1) return Direction.DOWN;
+  if (nextCol === currentCol && nextRow === currentRow - 1) return Direction.UP;
   return '';
 };
 
 const getGrowthNodeCoords = (snakeTail, currentDirection) => {
-  const tailNextNodeDirection = getNextNodeDirection(
-    snakeTail,
-    currentDirection,
-  );
+  const tailNextNodeDirection = getNextNodeDirection(snakeTail, currentDirection);
   const growthDirection = getOppositeDirection(tailNextNodeDirection);
-  const currentTailCoords = {
-    row: snakeTail.value.row,
-    col: snakeTail.value.col,
-  };
-  const growthNodeCoords = getCoordsInDirection(
-    currentTailCoords,
-    growthDirection,
-  );
+  const currentTailCoords = { row: snakeTail.value.row, col: snakeTail.value.col };
+  const growthNodeCoords = getCoordsInDirection(currentTailCoords, growthDirection);
   return growthNodeCoords;
 };
 
@@ -415,7 +416,6 @@ const getCellClassName = (
     }
   }
   if (snakeCells.has(cellValue)) className = 'board__cell board__cell--green';
-
   return className;
 };
 

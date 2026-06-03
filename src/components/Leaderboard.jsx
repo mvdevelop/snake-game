@@ -1,14 +1,7 @@
 import React from 'react';
+import { useSelector } from 'react-redux';
+import { selectScores } from '../store/gameSlice';
 import './components.css';
-
-const MOCK_SCORES = [
-  { rank: 1, player: 'MvDev', score: 42, date: '2026-05-28' },
-  { rank: 2, player: 'CobraNinja', score: 35, date: '2026-05-30' },
-  { rank: 3, player: 'PixelQueen', score: 28, date: '2026-05-25' },
-  { rank: 4, player: 'SnakeKing', score: 22, date: '2026-05-20' },
-  { rank: 5, player: 'RetroGamer', score: 18, date: '2026-05-15' },
-  { rank: 6, player: 'ByteHunter', score: 14, date: '2026-05-10' },
-];
 
 const RANK_MEDAL = {
   1: '🥇',
@@ -17,6 +10,8 @@ const RANK_MEDAL = {
 };
 
 const Leaderboard = () => {
+  const scores = useSelector(selectScores);
+
   return (
     <div className="leaderboard">
       <div className="leaderboard__header">
@@ -38,27 +33,38 @@ const Leaderboard = () => {
           </div>
 
           {/* Score rows */}
-          {MOCK_SCORES.map((entry) => (
-            <div
-              key={entry.rank}
-              className={`leaderboard__row ${
-                entry.rank <= 3 ? 'leaderboard__row--top' : ''
-              }`}
-            >
-              <span className="leaderboard__col leaderboard__col--rank">
-                {RANK_MEDAL[entry.rank] || entry.rank}
-              </span>
-              <span className="leaderboard__col leaderboard__col--player">
-                {entry.player}
-              </span>
-              <span className="leaderboard__col leaderboard__col--score">
-                {entry.score}
-              </span>
-              <span className="leaderboard__col leaderboard__col--date">
-                {entry.date}
-              </span>
+          {scores.length === 0 ? (
+            <div className="leaderboard__row" style={{ justifyContent: 'center', display: 'flex', gridColumn: '1 / -1', padding: '40px 20px' }}>
+              <p className="leaderboard__empty" style={{ color: 'var(--text-muted)', margin: 0, fontSize: '0.9rem' }}>
+                Nenhuma pontuação ainda. Seja o primeiro a jogar!
+              </p>
             </div>
-          ))}
+          ) : (
+            scores.map((entry, index) => {
+              const rank = index + 1;
+              return (
+                <div
+                  key={`${entry.player}-${entry.date}-${index}`}
+                  className={`leaderboard__row ${
+                    rank <= 3 ? 'leaderboard__row--top' : ''
+                  }`}
+                >
+                  <span className="leaderboard__col leaderboard__col--rank">
+                    {RANK_MEDAL[rank] || rank}
+                  </span>
+                  <span className="leaderboard__col leaderboard__col--player">
+                    {entry.player}
+                  </span>
+                  <span className="leaderboard__col leaderboard__col--score">
+                    {entry.score}
+                  </span>
+                  <span className="leaderboard__col leaderboard__col--date">
+                    {entry.date}
+                  </span>
+                </div>
+              );
+            })
+          )}
         </div>
 
         <p className="leaderboard__footnote">
