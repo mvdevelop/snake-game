@@ -1,15 +1,25 @@
-
-import React from 'react';
-import Board from './Board/Board.jsx';
-
+import React, { useState } from 'react';
+import Navbar from './components/Navbar';
+import Board from './Board/Board';
+import Landing from './Landing/Landing';
 import './App.css';
-import Navbar from './components/Navbar.js';
 
-const App = () => (
-  <div className="App">
-    <Navbar />
-    <Board></Board>
-  </div>
-);
+const App = () => {
+  const [currentPage, setCurrentPage] = useState('landing');
+
+  return (
+    <div className="App">
+      <Navbar currentPage={currentPage} onNavigate={setCurrentPage} />
+
+      <main className="App__main">
+        {currentPage === 'landing' ? (
+          <Landing onPlay={() => setCurrentPage('game')} />
+        ) : (
+          <Board />
+        )}
+      </main>
+    </div>
+  );
+};
 
 export default App;

@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useState, useCallback} from 'react';
 import {
   randomIntFromInterval,
   reverseLinkedList,
@@ -54,6 +54,10 @@ const getStartingSnakeLLValue = board => {
 
 const Board = () => {
   const [score, setScore] = useState(0);
+  const [highScore, setHighScore] = useState(() => {
+    const saved = localStorage.getItem('snake-game-highscore');
+    return saved ? parseInt(saved, 10) : 0;
+  });
   const [board, setBoard] = useState(createBoard(BOARD_SIZE));
   const [snake, setSnake] = useState(
     new LinkedList(getStartingSnakeLLValue(board)),
@@ -67,24 +71,37 @@ const Board = () => {
   const [foodShouldReverseDirection, setFoodShouldReverseDirection] = useState(
     false,
   );
+  const [gameState, setGameState] = useState('idle'); // 'idle' | 'playing' | 'gameover'
 
   useEffect(() => {
     window.addEventListener('keydown', e => {
       handleKeydown(e);
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // `useInterval` is needed; you can't naively do `setInterval` in the
   // `useEffect` above. See the article linked above the `useInterval`
   // definition for details.
   useInterval(() => {
-    moveSnake();
+    if (gameState === 'playing') {
+      moveSnake();
+    }
   }, 150);
 
-  const handleKeydown = e => {
+  const handleKeydown = useCallback(e => {
     const newDirection = getDirectionFromKey(e.key);
     const isValidDirection = newDirection !== '';
     if (!isValidDirection) return;
+
+    // Start game on first arrow key press
+    setGameState(prev => {
+      if (prev === 'idle' || prev === 'gameover') {
+        return 'playing';
+      }
+      return prev;
+    });
+
     const snakeWillRunIntoItself =
       getOppositeDirection(newDirection) === direction && snakeCells.size > 1;
     // Note: this functionality is currently broken, for the same reason that
@@ -93,7 +110,7 @@ const Board = () => {
     // is called. I leave it as an exercise to the viewer to fix this :P
     if (snakeWillRunIntoItself) return;
     setDirection(newDirection);
-  };
+  }, [direction, snakeCells]);
 
   const moveSnake = () => {
     const currentHeadCoords = {
@@ -195,6 +212,13 @@ const Board = () => {
   };
 
   const handleGameOver = () => {
+    const finalScore = score;
+    if (finalScore > highScore) {
+      setHighScore(finalScore);
+      localStorage.setItem('snake-game-highscore', finalScore.toString());
+    }
+
+    setGameState('gameover');
     setScore(0);
     const snakeLLStartingValue = getStartingSnakeLLValue(board);
     setSnake(new LinkedList(snakeLLStartingValue));
@@ -203,25 +227,78 @@ const Board = () => {
     setDirection(Direction.RIGHT);
   };
 
+  const handleRestart = () => {
+    setGameState('idle');
+    setScore(0);
+    const newBoard = createBoard(BOARD_SIZE);
+    setBoard(newBoard);
+    const snakeLLStartingValue = getStartingSnakeLLValue(newBoard);
+    setSnake(new LinkedList(snakeLLStartingValue));
+    setFoodCell(snakeLLStartingValue.cell + 5);
+    setSnakeCells(new Set([snakeLLStartingValue.cell]));
+    setDirection(Direction.RIGHT);
+    setFoodShouldReverseDirection(false);
+  };
+
   return (
-    <>
-      <h1>Score: {score}</h1>
-      <div className="board">
-        {board.map((row, rowIdx) => (
-          <div key={rowIdx} className="row">
-            {row.map((cellValue, cellIdx) => {
-              const className = getCellClassName(
-                cellValue,
-                foodCell,
-                foodShouldReverseDirection,
-                snakeCells,
-              );
-              return <div key={cellIdx} className={className}></div>;
-            })}
-          </div>
-        ))}
+    <div className="game-page">
+      <div className="game-page__header">
+        <div className="game-page__score">
+          <span className="game-page__score-label">Pontuação</span>
+          <span className="game-page__score-value">{score}</span>
+        </div>
+        <div className="game-page__score game-page__score--high">
+          <span className="game-page__score-label">Recorde</span>
+          <span className="game-page__score-value">{highScore}</span>
+        </div>
       </div>
-    </>
+
+      <div className="game-page__board-wrapper">
+        <div className="board">
+          {board.map((row, rowIdx) => (
+            <div key={rowIdx} className="board__row">
+              {row.map((cellValue, cellIdx) => {
+                const className = getCellClassName(
+                  cellValue,
+                  foodCell,
+                  foodShouldReverseDirection,
+                  snakeCells,
+                );
+                return <div key={cellIdx} className={className}></div>;
+              })}
+            </div>
+          ))}
+        </div>
+
+        {/* Overlay messages */}
+        {gameState === 'idle' && (
+          <div className="game-page__overlay">
+            <div className="game-page__overlay-content">
+              <span className="game-page__overlay-icon">⌨️</span>
+              <h3 className="game-page__overlay-title">Pronto para Jogar?</h3>
+              <p className="game-page__overlay-text">
+                Pressione qualquer <strong>seta do teclado</strong> para começar!
+              </p>
+            </div>
+          </div>
+        )}
+
+        {gameState === 'gameover' && (
+          <div className="game-page__overlay">
+            <div className="game-page__overlay-content">
+              <span className="game-page__overlay-icon">💀</span>
+              <h3 className="game-page__overlay-title">Game Over!</h3>
+              <p className="game-page__overlay-text">
+                {score === highScore ? '🎉 Novo recorde!' : `Você fez ${score} pontos!`}
+              </p>
+              <button className="game-page__restart-btn" onClick={handleRestart}>
+                Jogar Novamente
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 
@@ -329,15 +406,15 @@ const getCellClassName = (
   foodShouldReverseDirection,
   snakeCells,
 ) => {
-  let className = 'cell';
+  let className = 'board__cell';
   if (cellValue === foodCell) {
     if (foodShouldReverseDirection) {
-      className = 'cell cell-purple';
+      className = 'board__cell board__cell--purple';
     } else {
-      className = 'cell cell-red';
+      className = 'board__cell board__cell--red';
     }
   }
-  if (snakeCells.has(cellValue)) className = 'cell cell-green';
+  if (snakeCells.has(cellValue)) className = 'board__cell board__cell--green';
 
   return className;
 };
