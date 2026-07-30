@@ -1,12 +1,6 @@
 import React, { useCallback, useRef } from 'react';
 import type { TouchControlsProps, Direction } from '../types';
-
-const Direction: Record<string, Direction> = {
-  UP: 'UP',
-  RIGHT: 'RIGHT',
-  DOWN: 'DOWN',
-  LEFT: 'LEFT',
-};
+import { DIRECTIONS } from '../types';
 
 const TouchControls: React.FC<TouchControlsProps> = ({ onDirectionChange }) => {
   const activeButton = useRef<string | null>(null);
@@ -32,10 +26,10 @@ const TouchControls: React.FC<TouchControlsProps> = ({ onDirectionChange }) => {
         {/* Up */}
         <button
           className="touch-btn touch-btn--up"
-          onTouchStart={handlePress(Direction.UP)}
+          onTouchStart={handlePress(DIRECTIONS.UP)}
           onTouchEnd={handleRelease}
           onTouchCancel={handleRelease}
-          onMouseDown={handlePress(Direction.UP)}
+          onMouseDown={handlePress(DIRECTIONS.UP)}
           onMouseUp={handleRelease}
           onMouseLeave={handleRelease}
           aria-label="Cima"
@@ -48,10 +42,10 @@ const TouchControls: React.FC<TouchControlsProps> = ({ onDirectionChange }) => {
         {/* Left */}
         <button
           className="touch-btn touch-btn--left"
-          onTouchStart={handlePress(Direction.LEFT)}
+          onTouchStart={handlePress(DIRECTIONS.LEFT)}
           onTouchEnd={handleRelease}
           onTouchCancel={handleRelease}
-          onMouseDown={handlePress(Direction.LEFT)}
+          onMouseDown={handlePress(DIRECTIONS.LEFT)}
           onMouseUp={handleRelease}
           onMouseLeave={handleRelease}
           aria-label="Esquerda"
@@ -71,10 +65,10 @@ const TouchControls: React.FC<TouchControlsProps> = ({ onDirectionChange }) => {
         {/* Right */}
         <button
           className="touch-btn touch-btn--right"
-          onTouchStart={handlePress(Direction.RIGHT)}
+          onTouchStart={handlePress(DIRECTIONS.RIGHT)}
           onTouchEnd={handleRelease}
           onTouchCancel={handleRelease}
-          onMouseDown={handlePress(Direction.RIGHT)}
+          onMouseDown={handlePress(DIRECTIONS.RIGHT)}
           onMouseUp={handleRelease}
           onMouseLeave={handleRelease}
           aria-label="Direita"
@@ -87,10 +81,10 @@ const TouchControls: React.FC<TouchControlsProps> = ({ onDirectionChange }) => {
         {/* Down */}
         <button
           className="touch-btn touch-btn--down"
-          onTouchStart={handlePress(Direction.DOWN)}
+          onTouchStart={handlePress(DIRECTIONS.DOWN)}
           onTouchEnd={handleRelease}
           onTouchCancel={handleRelease}
-          onMouseDown={handlePress(Direction.DOWN)}
+          onMouseDown={handlePress(DIRECTIONS.DOWN)}
           onMouseUp={handleRelease}
           onMouseLeave={handleRelease}
           aria-label="Baixo"
