@@ -1,10 +1,11 @@
 import React from 'react';
 import snakeGif from '../img/snake.gif';
-import Leaderboard from '../components/Leaderboard.jsx';
-import Footer from '../components/Footer.jsx';
+import Leaderboard from '../components/Leaderboard';
+import Footer from '../components/Footer';
+import type { LandingProps } from '../types';
 import './Landing.css';
 
-const Landing = ({ onPlay }) => {
+const Landing: React.FC<LandingProps> = ({ onPlay }) => {
   return (
     <div className="landing">
       {/* Animated Background Blobs */}

@@ -1,17 +1,23 @@
-import { createSlice } from '@reduxjs/toolkit';
+import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import type { AuthState, User, RootState } from '../types';
 
-const initialState = {
+const initialState: AuthState = {
   currentUser: null,
   isAuthenticated: false,
   users: [],
   authError: null,
 };
 
+interface AuthPayload {
+  username: string;
+  password: string;
+}
+
 const authSlice = createSlice({
   name: 'auth',
   initialState,
   reducers: {
-    register: (state, action) => {
+    register: (state, action: PayloadAction<AuthPayload>) => {
       const { username, password } = action.payload;
       state.authError = null;
 
@@ -25,7 +31,7 @@ const authSlice = createSlice({
       }
 
       const exists = state.users.some(
-        (u) => u.username.toLowerCase() === username.trim().toLowerCase()
+        (u) => u.username.toLowerCase() === username.trim().toLowerCase(),
       );
       if (exists) {
         state.authError = 'Este usuário já existe';
@@ -43,7 +49,7 @@ const authSlice = createSlice({
       state.isAuthenticated = true;
     },
 
-    login: (state, action) => {
+    login: (state, action: PayloadAction<AuthPayload>) => {
       const { username, password } = action.payload;
       state.authError = null;
 
@@ -55,7 +61,7 @@ const authSlice = createSlice({
       const user = state.users.find(
         (u) =>
           u.username.toLowerCase() === username.trim().toLowerCase() &&
-          u.password === btoa(password)
+          u.password === btoa(password),
       );
 
       if (!user) {
@@ -73,14 +79,20 @@ const authSlice = createSlice({
       state.authError = null;
     },
 
+    setAuthError: (state, action: PayloadAction<string>) => {
+      state.authError = action.payload;
+    },
+
     clearAuthError: (state) => {
       state.authError = null;
     },
   },
 });
 
-export const { register, login, logout, clearAuthError } = authSlice.actions;
-export const selectCurrentUser = (state) => state.auth.currentUser;
-export const selectIsAuthenticated = (state) => state.auth.isAuthenticated;
-export const selectAuthError = (state) => state.auth.authError;
+export const { register, login, logout, setAuthError, clearAuthError } = authSlice.actions;
+
+export const selectCurrentUser = (state: RootState): User | null => state.auth.currentUser;
+export const selectIsAuthenticated = (state: RootState): boolean => state.auth.isAuthenticated;
+export const selectAuthError = (state: RootState): string | null => state.auth.authError;
+
 export default authSlice.reducer;

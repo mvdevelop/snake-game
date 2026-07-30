@@ -1,5 +1,5 @@
-import React, {useEffect, useState, useCallback, useRef} from 'react';
-import { useSelector, useDispatch } from 'react-redux';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { incrementScore, endGame, resetGame, selectHighScore } from '../store/gameSlice';
 import { selectCurrentUser } from '../store/authSlice';
 import TouchControls from '../components/TouchControls';
@@ -7,36 +7,46 @@ import {
   randomIntFromInterval,
   reverseLinkedList,
   useInterval,
-} from '../lib/utils.js';
-
+} from '../lib/utils';
+import type {
+  Direction,
+  Coords,
+  Board as BoardType,
+  LinkedListNode,
+  LinkedList,
+  SnakeCellValue,
+} from '../types';
+import {
+  DIRECTIONS,
+  BOARD_SIZE,
+  PROBABILITY_OF_DIRECTION_REVERSAL_FOOD,
+  MIN_SWIPE_DISTANCE,
+  GAME_INTERVAL_MS,
+} from '../types';
 import './Board.css';
 
-class LinkedListNode {
-  constructor(value) {
+class LinkedListNodeImpl implements LinkedListNode<SnakeCellValue> {
+  value: SnakeCellValue;
+  next: LinkedListNode<SnakeCellValue> | null;
+
+  constructor(value: SnakeCellValue) {
     this.value = value;
     this.next = null;
   }
 }
 
-class LinkedList {
-  constructor(value) {
-    const node = new LinkedListNode(value);
+class LinkedListImpl implements LinkedList<SnakeCellValue> {
+  head: LinkedListNode<SnakeCellValue>;
+  tail: LinkedListNode<SnakeCellValue>;
+
+  constructor(value: SnakeCellValue) {
+    const node = new LinkedListNodeImpl(value);
     this.head = node;
     this.tail = node;
   }
 }
 
-const Direction = {
-  UP: 'UP',
-  RIGHT: 'RIGHT',
-  DOWN: 'DOWN',
-  LEFT: 'LEFT',
-};
-
-const BOARD_SIZE = 15;
-const PROBABILITY_OF_DIRECTION_REVERSAL_FOOD = 0.3;
-
-const getStartingSnakeLLValue = board => {
+const getStartingSnakeLLValue = (board: BoardType): SnakeCellValue => {
   const rowSize = board.length;
   const colSize = board[0].length;
   const startingRow = Math.round(rowSize / 3);
@@ -49,173 +59,183 @@ const getStartingSnakeLLValue = board => {
   };
 };
 
-const Board = () => {
-  const dispatch = useDispatch();
-  const highScore = useSelector(selectHighScore);
-  const currentUser = useSelector(selectCurrentUser);
+const Board: React.FC = () => {
+  const dispatch = useAppDispatch();
+  const highScore = useAppSelector(selectHighScore);
+  const currentUser = useAppSelector(selectCurrentUser);
 
   // Local game state (not persisted — gameplay mechanics)
-  const [board, setBoard] = useState(createBoard(BOARD_SIZE));
-  const [snake, setSnake] = useState(
-    new LinkedList(getStartingSnakeLLValue(board)),
+  const [board, setBoard] = useState<BoardType>(createBoard(BOARD_SIZE));
+  const [snake, setSnake] = useState<LinkedList<SnakeCellValue>>(
+    new LinkedListImpl(getStartingSnakeLLValue(createBoard(BOARD_SIZE))),
   );
-  const [snakeCells, setSnakeCells] = useState(
-    new Set([snake.head.value.cell]),
+  const [snakeCells, setSnakeCells] = useState<Set<number>>(
+    new Set([getStartingSnakeLLValue(createBoard(BOARD_SIZE)).cell]),
   );
-  const [foodCell, setFoodCell] = useState(snake.head.value.cell + 5);
-  const [direction, setDirection] = useState(Direction.RIGHT);
+  const [foodCell, setFoodCell] = useState<number>(getStartingSnakeLLValue(createBoard(BOARD_SIZE)).cell + 5);
+  const [direction, setDirection] = useState<Direction>(DIRECTIONS.RIGHT);
   const [foodShouldReverseDirection, setFoodShouldReverseDirection] = useState(false);
-  const [gameState, setGameState] = useState('idle');
+  const [gameState, setGameState] = useState<'idle' | 'playing' | 'gameover'>('idle');
   const [score, setScore] = useState(0);
 
   // Touch swipe detection
-  const boardWrapperRef = useRef(null);
-  const touchStartRef = useRef(null);
+  const boardWrapperRef = useRef<HTMLDivElement>(null);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  // Snake ref to avoid stale closures
+  const snakeRef = useRef(snake);
+  snakeRef.current = snake;
+  const snakeCellsRef = useRef(snakeCells);
+  snakeCellsRef.current = snakeCells;
+  const directionRef = useRef(direction);
+  directionRef.current = direction;
+  const foodCellRef = useRef(foodCell);
+  foodCellRef.current = foodCell;
+  const foodShouldReverseRef = useRef(foodShouldReverseDirection);
+  foodShouldReverseRef.current = foodShouldReverseDirection;
 
   // Unified direction change — used by keyboard, touch buttons, and swipe
-  const handleDirectionChange = useCallback((newDirection) => {
+  const handleDirectionChange = useCallback((newDirection: Direction) => {
     if (!newDirection) return;
 
-    setGameState(prev => {
+    setGameState((prev) => {
       if (prev === 'idle' || prev === 'gameover') {
         return 'playing';
       }
       return prev;
     });
 
-    setDirection(prevDir => {
+    setDirection((prevDir) => {
       const snakeWillRunIntoItself =
-        getOppositeDirection(newDirection) === prevDir && snakeCells.size > 1;
+        getOppositeDirection(newDirection) === prevDir && snakeCellsRef.current.size > 1;
       if (snakeWillRunIntoItself) return prevDir;
       return newDirection;
     });
-  }, [snakeCells]);
+  }, []);
 
   // --- Swipe detection ---
-  const handleTouchStart = useCallback((e) => {
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
     const touch = e.touches[0];
     touchStartRef.current = { x: touch.clientX, y: touch.clientY };
   }, []);
 
-  const handleTouchEnd = useCallback((e) => {
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     if (!touchStartRef.current) return;
     const touch = e.changedTouches[0];
     const deltaX = touch.clientX - touchStartRef.current.x;
     const deltaY = touch.clientY - touchStartRef.current.y;
-    const minSwipeDistance = 30;
 
-    if (Math.abs(deltaX) < minSwipeDistance && Math.abs(deltaY) < minSwipeDistance) {
+    if (Math.abs(deltaX) < MIN_SWIPE_DISTANCE && Math.abs(deltaY) < MIN_SWIPE_DISTANCE) {
       return; // Too short — probably a tap, not a swipe
     }
 
     if (Math.abs(deltaX) > Math.abs(deltaY)) {
-      handleDirectionChange(deltaX > 0 ? Direction.RIGHT : Direction.LEFT);
+      handleDirectionChange(deltaX > 0 ? DIRECTIONS.RIGHT : DIRECTIONS.LEFT);
     } else {
-      handleDirectionChange(deltaY > 0 ? Direction.DOWN : Direction.UP);
+      handleDirectionChange(deltaY > 0 ? DIRECTIONS.DOWN : DIRECTIONS.UP);
     }
 
     touchStartRef.current = null;
   }, [handleDirectionChange]);
 
   useEffect(() => {
-    window.addEventListener('keydown', e => {
-      handleKeydown(e);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const handleKeydown = (e: KeyboardEvent) => {
+      const newDirection = getDirectionFromKey(e.key);
+      if (newDirection) {
+        handleDirectionChange(newDirection);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeydown);
+    return () => window.removeEventListener('keydown', handleKeydown);
+  }, [handleDirectionChange]);
 
   useInterval(() => {
     if (gameState === 'playing') {
       moveSnake();
     }
-  }, 150);
-
-  const handleKeydown = useCallback(e => {
-    const newDirection = getDirectionFromKey(e.key);
-    if (newDirection) {
-      handleDirectionChange(newDirection);
-    }
-  }, [handleDirectionChange]);
+  }, GAME_INTERVAL_MS);
 
   const moveSnake = () => {
-    const currentHeadCoords = {
-      row: snake.head.value.row,
-      col: snake.head.value.col,
+    const currentHeadCoords: Coords = {
+      row: snakeRef.current.head.value.row,
+      col: snakeRef.current.head.value.col,
     };
 
-    const nextHeadCoords = getCoordsInDirection(currentHeadCoords, direction);
+    const nextHeadCoords = getCoordsInDirection(currentHeadCoords, directionRef.current);
     if (isOutOfBounds(nextHeadCoords, board)) {
       handleGameOver();
       return;
     }
     const nextHeadCell = board[nextHeadCoords.row][nextHeadCoords.col];
-    if (snakeCells.has(nextHeadCell)) {
+    if (snakeCellsRef.current.has(nextHeadCell)) {
       handleGameOver();
       return;
     }
 
-    const newHead = new LinkedListNode({
+    const newHead = new LinkedListNodeImpl({
       row: nextHeadCoords.row,
       col: nextHeadCoords.col,
       cell: nextHeadCell,
     });
-    const currentHead = snake.head;
-    snake.head = newHead;
+    const currentHead = snakeRef.current.head;
+    snakeRef.current.head = newHead;
     currentHead.next = newHead;
 
-    const newSnakeCells = new Set(snakeCells);
-    newSnakeCells.delete(snake.tail.value.cell);
+    const newSnakeCells = new Set(snakeCellsRef.current);
+    newSnakeCells.delete(snakeRef.current.tail.value.cell);
     newSnakeCells.add(nextHeadCell);
 
-    snake.tail = snake.tail.next;
-    if (snake.tail === null) snake.tail = snake.head;
+    snakeRef.current.tail = snakeRef.current.tail.next;
+    if (snakeRef.current.tail === null) {
+      snakeRef.current.tail = snakeRef.current.head;
+    }
 
-    const foodConsumed = nextHeadCell === foodCell;
+    const foodConsumed = nextHeadCell === foodCellRef.current;
     if (foodConsumed) {
       growSnake(newSnakeCells);
-      if (foodShouldReverseDirection) reverseSnake();
+      if (foodShouldReverseRef.current) reverseSnake();
       handleFoodConsumption(newSnakeCells);
     }
 
     setSnakeCells(newSnakeCells);
   };
 
-  const growSnake = newSnakeCells => {
-    const growthNodeCoords = getGrowthNodeCoords(snake.tail, direction);
+  const growSnake = (newSnakeCells: Set<number>) => {
+    const growthNodeCoords = getGrowthNodeCoords(snakeRef.current.tail, directionRef.current);
     if (isOutOfBounds(growthNodeCoords, board)) {
       return;
     }
     const newTailCell = board[growthNodeCoords.row][growthNodeCoords.col];
-    const newTail = new LinkedListNode({
+    const newTail = new LinkedListNodeImpl({
       row: growthNodeCoords.row,
       col: growthNodeCoords.col,
       cell: newTailCell,
     });
-    const currentTail = snake.tail;
-    snake.tail = newTail;
-    snake.tail.next = currentTail;
+    const currentTail = snakeRef.current.tail;
+    snakeRef.current.tail = newTail;
+    snakeRef.current.tail.next = currentTail;
 
     newSnakeCells.add(newTailCell);
   };
 
   const reverseSnake = () => {
-    const tailNextNodeDirection = getNextNodeDirection(snake.tail, direction);
+    const tailNextNodeDirection = getNextNodeDirection(snakeRef.current.tail, directionRef.current);
     const newDirection = getOppositeDirection(tailNextNodeDirection);
     setDirection(newDirection);
 
-    reverseLinkedList(snake.tail);
-    const snakeHead = snake.head;
-    snake.head = snake.tail;
-    snake.tail = snakeHead;
+    reverseLinkedList(snakeRef.current.tail);
+    const snakeHead = snakeRef.current.head;
+    snakeRef.current.head = snakeRef.current.tail;
+    snakeRef.current.tail = snakeHead;
   };
 
-  const handleFoodConsumption = newSnakeCells => {
+  const handleFoodConsumption = (newSnakeCells: Set<number>) => {
     const maxPossibleCellValue = BOARD_SIZE * BOARD_SIZE;
-    let nextFoodCell;
+    let nextFoodCell: number;
     while (true) {
       nextFoodCell = randomIntFromInterval(1, maxPossibleCellValue);
-      if (newSnakeCells.has(nextFoodCell) || foodCell === nextFoodCell)
-        continue;
+      if (newSnakeCells.has(nextFoodCell) || foodCellRef.current === nextFoodCell) continue;
       break;
     }
 
@@ -224,7 +244,7 @@ const Board = () => {
 
     setFoodCell(nextFoodCell);
     setFoodShouldReverseDirection(nextFoodShouldReverseDirection);
-    setScore(prev => prev + 1);
+    setScore((prev) => prev + 1);
     dispatch(incrementScore());
   };
 
@@ -233,16 +253,18 @@ const Board = () => {
     const finalScore = score;
 
     // Dispatch to Redux — persists via redux-persist
-    dispatch(endGame({
-      score: finalScore,
-      player: currentUser?.username || 'Anonymous',
-    }));
+    dispatch(
+      endGame({
+        score: finalScore,
+        player: currentUser?.username || 'Anonymous',
+      }),
+    );
 
     const snakeLLStartingValue = getStartingSnakeLLValue(board);
-    setSnake(new LinkedList(snakeLLStartingValue));
+    setSnake(new LinkedListImpl(snakeLLStartingValue));
     setFoodCell(snakeLLStartingValue.cell + 5);
     setSnakeCells(new Set([snakeLLStartingValue.cell]));
-    setDirection(Direction.RIGHT);
+    setDirection(DIRECTIONS.RIGHT);
   };
 
   const handleRestart = () => {
@@ -252,10 +274,10 @@ const Board = () => {
     const newBoard = createBoard(BOARD_SIZE);
     setBoard(newBoard);
     const snakeLLStartingValue = getStartingSnakeLLValue(newBoard);
-    setSnake(new LinkedList(snakeLLStartingValue));
+    setSnake(new LinkedListImpl(snakeLLStartingValue));
     setFoodCell(snakeLLStartingValue.cell + 5);
     setSnakeCells(new Set([snakeLLStartingValue.cell]));
-    setDirection(Direction.RIGHT);
+    setDirection(DIRECTIONS.RIGHT);
     setFoodShouldReverseDirection(false);
   };
 
@@ -314,8 +336,7 @@ const Board = () => {
               <p className="game-page__overlay-text">
                 {score === highScore && score > 0
                   ? '🎉 Novo recorde!'
-                  : `Você fez ${score} pontos!`
-                }
+                  : `Você fez ${score} pontos!`}
               </p>
               <button className="game-page__restart-btn" onClick={handleRestart}>
                 Jogar Novamente
@@ -331,12 +352,12 @@ const Board = () => {
   );
 };
 
-const createBoard = BOARD_SIZE => {
+const createBoard = (size: number): BoardType => {
   let counter = 1;
-  const board = [];
-  for (let row = 0; row < BOARD_SIZE; row++) {
-    const currentRow = [];
-    for (let col = 0; col < BOARD_SIZE; col++) {
+  const board: BoardType = [];
+  for (let row = 0; row < size; row++) {
+    const currentRow: number[] = [];
+    for (let col = 0; col < size; col++) {
       currentRow.push(counter++);
     }
     board.push(currentRow);
@@ -344,68 +365,73 @@ const createBoard = BOARD_SIZE => {
   return board;
 };
 
-const getCoordsInDirection = (coords, direction) => {
-  if (direction === Direction.UP) {
+const getCoordsInDirection = (coords: Coords, direction: Direction): Coords => {
+  if (direction === DIRECTIONS.UP) {
     return { row: coords.row - 1, col: coords.col };
   }
-  if (direction === Direction.RIGHT) {
+  if (direction === DIRECTIONS.RIGHT) {
     return { row: coords.row, col: coords.col + 1 };
   }
-  if (direction === Direction.DOWN) {
+  if (direction === DIRECTIONS.DOWN) {
     return { row: coords.row + 1, col: coords.col };
   }
-  if (direction === Direction.LEFT) {
+  if (direction === DIRECTIONS.LEFT) {
     return { row: coords.row, col: coords.col - 1 };
   }
+  return coords;
 };
 
-const isOutOfBounds = (coords, board) => {
-  const {row, col} = coords;
+const isOutOfBounds = (coords: Coords, board: BoardType): boolean => {
+  const { row, col } = coords;
   if (row < 0 || col < 0) return true;
   if (row >= board.length || col >= board[0].length) return true;
   return false;
 };
 
-const getDirectionFromKey = key => {
-  if (key === 'ArrowUp') return Direction.UP;
-  if (key === 'ArrowRight') return Direction.RIGHT;
-  if (key === 'ArrowDown') return Direction.DOWN;
-  if (key === 'ArrowLeft') return Direction.LEFT;
+const getDirectionFromKey = (key: string): Direction | '' => {
+  if (key === 'ArrowUp') return DIRECTIONS.UP;
+  if (key === 'ArrowRight') return DIRECTIONS.RIGHT;
+  if (key === 'ArrowDown') return DIRECTIONS.DOWN;
+  if (key === 'ArrowLeft') return DIRECTIONS.LEFT;
   return '';
 };
 
-const getNextNodeDirection = (node, currentDirection) => {
+const getNextNodeDirection = (
+  node: LinkedListNode<SnakeCellValue>,
+  currentDirection: Direction,
+): Direction => {
   if (node.next === null) return currentDirection;
-  const {row: currentRow, col: currentCol} = node.value;
-  const {row: nextRow, col: nextCol} = node.next.value;
-  if (nextRow === currentRow && nextCol === currentCol + 1) return Direction.RIGHT;
-  if (nextRow === currentRow && nextCol === currentCol - 1) return Direction.LEFT;
-  if (nextCol === currentCol && nextRow === currentRow + 1) return Direction.DOWN;
-  if (nextCol === currentCol && nextRow === currentRow - 1) return Direction.UP;
-  return '';
+  const { row: currentRow, col: currentCol } = node.value;
+  const { row: nextRow, col: nextCol } = node.next.value;
+  if (nextRow === currentRow && nextCol === currentCol + 1) return DIRECTIONS.RIGHT;
+  if (nextRow === currentRow && nextCol === currentCol - 1) return DIRECTIONS.LEFT;
+  if (nextCol === currentCol && nextRow === currentRow + 1) return DIRECTIONS.DOWN;
+  if (nextCol === currentCol && nextRow === currentRow - 1) return DIRECTIONS.UP;
+  return currentDirection;
 };
 
-const getGrowthNodeCoords = (snakeTail, currentDirection) => {
+const getGrowthNodeCoords = (snakeTail: LinkedListNode<SnakeCellValue>, currentDirection: Direction): Coords => {
   const tailNextNodeDirection = getNextNodeDirection(snakeTail, currentDirection);
   const growthDirection = getOppositeDirection(tailNextNodeDirection);
-  const currentTailCoords = { row: snakeTail.value.row, col: snakeTail.value.col };
+  const currentTailCoords: Coords = { row: snakeTail.value.row, col: snakeTail.value.col };
   const growthNodeCoords = getCoordsInDirection(currentTailCoords, growthDirection);
   return growthNodeCoords;
 };
 
-const getOppositeDirection = direction => {
-  if (direction === Direction.UP) return Direction.DOWN;
-  if (direction === Direction.RIGHT) return Direction.LEFT;
-  if (direction === Direction.DOWN) return Direction.UP;
-  if (direction === Direction.LEFT) return Direction.RIGHT;
+const getOppositeDirection = (direction: Direction): Direction => {
+  if (direction === DIRECTIONS.UP) return DIRECTIONS.DOWN;
+  if (direction === DIRECTIONS.RIGHT) return DIRECTIONS.LEFT;
+  if (direction === DIRECTIONS.DOWN) return DIRECTIONS.UP;
+  if (direction === DIRECTIONS.LEFT) return DIRECTIONS.RIGHT;
+  return DIRECTIONS.RIGHT;
 };
 
 const getCellClassName = (
-  cellValue,
-  foodCell,
-  foodShouldReverseDirection,
-  snakeCells,
-) => {
+  cellValue: number,
+  foodCell: number,
+  foodShouldReverseDirection: boolean,
+  snakeCells: Set<number>,
+): string => {
   let className = 'board__cell';
   if (cellValue === foodCell) {
     if (foodShouldReverseDirection) {

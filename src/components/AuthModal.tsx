@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import { login, register, clearAuthError, selectAuthError } from '../store/authSlice';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { login, register, setAuthError, clearAuthError, selectAuthError } from '../store/authSlice';
+import type { AuthModalProps } from '../types';
+import './components.css';
 
-const AuthModal = ({ isOpen, onClose }) => {
-  const dispatch = useDispatch();
-  const authError = useSelector(selectAuthError);
-  const [tab, setTab] = useState('login'); // 'login' | 'register'
+const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
+  const dispatch = useAppDispatch();
+  const authError = useAppSelector(selectAuthError);
+  const [tab, setTab] = useState<'login' | 'register'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -19,26 +21,21 @@ const AuthModal = ({ isOpen, onClose }) => {
     }
   }, [isOpen, dispatch]);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
     if (tab === 'login') {
       dispatch(login({ username, password }));
     } else {
       if (password !== confirmPassword) {
-        dispatch({ type: 'auth/setError', payload: 'Senhas não conferem' });
+        dispatch(setAuthError('Senhas não conferem'));
         return;
       }
       dispatch(register({ username, password }));
     }
   };
 
-  // Close on successful auth (error will be null and isAuthenticated will be true)
-  // We don't have direct access to isAuthenticated here in a way that's clean...
-  // Let's just let the modal close naturally when the parent detects auth state.
-  // Actually, the modal closes when the user clicks outside or the parent detects auth change.
-
-  const handleOverlayClick = (e) => {
+  const handleOverlayClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
       onClose();
     }
@@ -49,7 +46,6 @@ const AuthModal = ({ isOpen, onClose }) => {
   return (
     <div className="auth-overlay" onClick={handleOverlayClick}>
       <div className="auth-modal animate-fade-in-scale">
-        {/* Close button */}
         <button className="auth-modal__close" onClick={onClose} aria-label="Fechar">
           ✕
         </button>
@@ -111,12 +107,10 @@ const AuthModal = ({ isOpen, onClose }) => {
             </div>
           )}
 
-          {/* Error message */}
           {authError && (
             <div className="auth-modal__error">{authError}</div>
           )}
 
-          {/* Submit */}
           <button type="submit" className="auth-modal__submit">
             {tab === 'login' ? 'Entrar' : 'Criar Conta'}
           </button>

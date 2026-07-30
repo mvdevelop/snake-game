@@ -1,11 +1,17 @@
-import { createSlice } from '@reduxjs/toolkit';
+import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import type { GameSliceState, ScoreEntry, RootState } from '../types';
 
-const initialState = {
+const initialState: GameSliceState = {
   highScore: 0,
   scores: [],
   currentScore: 0,
-  gameState: 'idle', // 'idle' | 'playing' | 'gameover'
+  gameState: 'idle',
 };
+
+interface EndGamePayload {
+  score?: number;
+  player?: string;
+}
 
 const gameSlice = createSlice({
   name: 'game',
@@ -15,11 +21,11 @@ const gameSlice = createSlice({
       state.currentScore += 1;
     },
 
-    setGameState: (state, action) => {
+    setGameState: (state, action: PayloadAction<GameSliceState['gameState']>) => {
       state.gameState = action.payload;
     },
 
-    endGame: (state, action) => {
+    endGame: (state, action: PayloadAction<EndGamePayload | undefined>) => {
       const { score, player } = action.payload || {};
       const finalScore = score !== undefined ? score : state.currentScore;
       const playerName = player || 'Anonymous';
@@ -37,7 +43,7 @@ const gameSlice = createSlice({
       });
 
       // Sort scores descending, keep top 10
-      state.scores.sort((a, b) => b.score - a.score);
+      state.scores.sort((a: ScoreEntry, b: ScoreEntry) => b.score - a.score);
       if (state.scores.length > 10) {
         state.scores = state.scores.slice(0, 10);
       }
@@ -53,16 +59,11 @@ const gameSlice = createSlice({
   },
 });
 
-export const {
-  incrementScore,
-  setGameState,
-  endGame,
-  resetGame,
-} = gameSlice.actions;
+export const { incrementScore, setGameState, endGame, resetGame } = gameSlice.actions;
 
-export const selectHighScore = (state) => state.game.highScore;
-export const selectScores = (state) => state.game.scores;
-export const selectCurrentScore = (state) => state.game.currentScore;
-export const selectGameState = (state) => state.game.gameState;
+export const selectHighScore = (state: RootState): number => state.game.highScore;
+export const selectScores = (state: RootState): ScoreEntry[] => state.game.scores;
+export const selectCurrentScore = (state: RootState): number => state.game.currentScore;
+export const selectGameState = (state: RootState): GameSliceState['gameState'] => state.game.gameState;
 
 export default gameSlice.reducer;

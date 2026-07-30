@@ -1,22 +1,26 @@
 import React, { useCallback, useRef } from 'react';
+import type { TouchControlsProps, Direction } from '../types';
 
-const Direction = {
+const Direction: Record<string, Direction> = {
   UP: 'UP',
   RIGHT: 'RIGHT',
   DOWN: 'DOWN',
   LEFT: 'LEFT',
 };
 
-const TouchControls = ({ onDirectionChange }) => {
-  const activeButton = useRef(null);
+const TouchControls: React.FC<TouchControlsProps> = ({ onDirectionChange }) => {
+  const activeButton = useRef<string | null>(null);
 
-  const handlePress = useCallback((dir) => (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (activeButton.current === dir) return;
-    activeButton.current = dir;
-    onDirectionChange(dir);
-  }, [onDirectionChange]);
+  const handlePress = useCallback(
+    (dir: Direction) => (e: React.TouchEvent | React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (activeButton.current === dir) return;
+      activeButton.current = dir;
+      onDirectionChange(dir);
+    },
+    [onDirectionChange],
+  );
 
   const handleRelease = useCallback(() => {
     activeButton.current = null;

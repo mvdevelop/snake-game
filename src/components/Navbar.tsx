@@ -1,26 +1,27 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useSelector, useDispatch } from 'react-redux';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { useTheme } from '../context/ThemeContext';
 import { selectIsAuthenticated, selectCurrentUser, logout } from '../store/authSlice';
 import AuthModal from './AuthModal';
+import type { NavbarProps } from '../types';
 import gif from '../img/snake.gif';
 import './components.css';
 
-const Navbar = ({ currentPage, onNavigate }) => {
+const Navbar: React.FC<NavbarProps> = ({ currentPage, onNavigate }) => {
   const { theme, toggleTheme } = useTheme();
-  const dispatch = useDispatch();
-  const isAuthenticated = useSelector(selectIsAuthenticated);
-  const currentUser = useSelector(selectCurrentUser);
+  const dispatch = useAppDispatch();
+  const isAuthenticated = useAppSelector(selectIsAuthenticated);
+  const currentUser = useAppSelector(selectCurrentUser);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
-  const dropdownRef = useRef(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const isGame = currentPage === 'game';
 
   // Close dropdown on outside click
   useEffect(() => {
-    const handleClick = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+    const handleClick = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setShowDropdown(false);
       }
     };

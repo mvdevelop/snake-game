@@ -4,8 +4,8 @@ import Board from './Board/Board';
 import Landing from './Landing/Landing';
 import './App.css';
 
-const App = () => {
-  const [currentPage, setCurrentPage] = useState('landing');
+const App: React.FC = () => {
+  const [currentPage, setCurrentPage] = useState<string>('landing');
 
   return (
     <div className="App">
