@@ -186,9 +186,11 @@ const Board: React.FC = () => {
     newSnakeCells.delete(snakeRef.current.tail.value.cell);
     newSnakeCells.add(nextHeadCell);
 
-    snakeRef.current.tail = snakeRef.current.tail.next;
-    if (snakeRef.current.tail === null) {
+    const newTail = snakeRef.current.tail.next;
+    if (newTail === null) {
       snakeRef.current.tail = snakeRef.current.head;
+    } else {
+      snakeRef.current.tail = newTail;
     }
 
     const foodConsumed = nextHeadCell === foodCellRef.current;
